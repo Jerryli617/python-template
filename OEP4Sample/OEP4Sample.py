@@ -84,6 +84,8 @@ def init():
     initialize the contract, put some important info into the storage in the blockchain
     :return:
     """
+    if len(OWNER) != 20:
+        Notify(["Owner illegal!"])
     if Get(ctx,SUPPLY_KEY):
         Notify("Already initialized!")
         return False
