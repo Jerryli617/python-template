@@ -86,6 +86,7 @@ def init():
     """
     if len(OWNER) != 20:
         Notify(["Owner illegal!"])
+        return False
     if Get(ctx,SUPPLY_KEY):
         Notify("Already initialized!")
         return False
