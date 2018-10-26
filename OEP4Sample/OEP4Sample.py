@@ -1,15 +1,9 @@
 """
-An Example of OEP-4
+An Example of OEP-4,
 """
 from boa.interop.System.Storage import GetContext, Get, Put, Delete
 from boa.interop.System.Runtime import Notify, CheckWitness
-from boa.interop.System.Action import RegisterAction
 from boa.builtins import concat, ToScriptHash
-# from boa.interop.Ontology.Runtime import AddressToBase58, Base58ToAddress
-
-TransferEvent = RegisterAction("transfer", "from", "to", "amount")
-ApprovalEvent = RegisterAction("approval", "owner", "spender", "amount")
-
 ctx = GetContext()
 
 NAME = 'MyToken'
@@ -20,8 +14,9 @@ OWNER = ToScriptHash("AQf4Mzu1YJrhz9f3aRkkwSm9n3qhXGSh4p")
 # OWNER = bytearray(b'\x61\x6f\x2a\x4a\x38\x39\x6f\xf2\x03\xea\x01\xe6\xc0\x70\xae\x42\x1b\xb8\xce\x2d')
 TOTAL_AMOUNT = 1000000000
 BALANCE_PREFIX = bytearray(b'\x01')
-APPROVE_PREFIX = b'\x02'
-SUPPLY_KEY = 'TotalSupply'
+APPROVE_PREFIX = bytearray(b'\x02')
+
+SUPPLY_KEY = 'totalSupply'
 
 
 def Main(operation, args):
@@ -73,7 +68,7 @@ def Main(operation, args):
         return approve(owner,spender,amount)
     if operation == 'allowance':
         if len(args) != 2:
-            return False
+            return False;
         owner = args[0]
         spender = args[1]
         return allowance(owner,spender)
@@ -84,23 +79,15 @@ def init():
     initialize the contract, put some important info into the storage in the blockchain
     :return:
     """
-    if len(OWNER) != 20:
-        Notify(["Owner illegal!"])
-        return False
     if Get(ctx,SUPPLY_KEY):
-        Notify("Already initialized!")
+        Notify('Already initialized!')
         return False
     else:
         total = TOTAL_AMOUNT * FACTOR
         Put(ctx,SUPPLY_KEY,total)
         Put(ctx,concat(BALANCE_PREFIX,OWNER),total)
-
-        # Notify(["transfer", "", Base58ToAddress(OWNER), total])
-        # ownerBase58 = AddressToBase58(OWNER)
-        TransferEvent("", OWNER, total)
-
+        Notify(['transfer', '', OWNER, total])
         return True
-
 
 def name():
     """
@@ -150,8 +137,13 @@ def transfer(from_acct,to_acct,amount):
     """
     if len(to_acct) != 20 or len(from_acct) != 20:
         raise Exception("address length error")
+
     if CheckWitness(from_acct) == False:
         return False
+
+    # This part is marked as commits since transferring of 0 MYT should fire event, too.
+    # if from_acct == to_acct or amount == 0:
+    #     return True
 
     fromKey = concat(BALANCE_PREFIX,from_acct)
     fromBalance = Get(ctx,fromKey)
@@ -166,9 +158,7 @@ def transfer(from_acct,to_acct,amount):
     toBalance = Get(ctx,toKey)
     Put(ctx,toKey,toBalance + amount)
 
-    # Notify(["transfer", AddressToBase58(from_acct), AddressToBase58(to_acct), amount])
-    # TransferEvent(AddressToBase58(from_acct), AddressToBase58(to_acct), amount)
-    TransferEvent(from_acct, to_acct, amount)
+    Notify(['transfer',from_acct,to_acct,amount])
 
     return True
 
@@ -180,10 +170,10 @@ def transferMulti(args):
     """
     for p in args:
         if len(p) != 3:
-            # return False is wrong
+            # return False
             raise Exception("transferMulti params error.")
         if transfer(p[0], p[1], p[2]) == False:
-            # return False is wrong since the previous transaction will be successful
+            # return False # this is wrong since the previous transaction will be successful
             raise Exception("transferMulti failed.")
     return True
 
@@ -199,24 +189,20 @@ def approve(owner,spender,amount):
     """
     if len(spender) != 20 or len(owner) != 20:
         raise Exception("address length error")
-    if CheckWitness(owner) == False:
-        return False
     if amount > balanceOf(owner):
+        return False
+    if CheckWitness(owner) == False:
         return False
 
     key = concat(concat(APPROVE_PREFIX,owner),spender)
     Put(ctx, key, amount)
-
-    # Notify(["approval", AddressToBase58(owner), AddressToBase58(spender), amount])
-    # ApprovalEvent(AddressToBase58(owner), AddressToBase58(spender), amount)
-    ApprovalEvent(owner, spender, amount)
-
+    Notify(['approval', owner, spender, amount])
     return True
 
 
 def transferFrom(spender,from_acct,to_acct,amount):
     """
-    spender spends amount of tokens on the behalf of from_acct, spender makes a transaction of amount of tokens
+    spender spend amount of token on the behalf of from_acct, spender makes a transaction of amount of tokens
     from from_acct to to_acct
     :param spender:
     :param from_acct:
@@ -224,10 +210,10 @@ def transferFrom(spender,from_acct,to_acct,amount):
     :param amount:
     :return:
     """
-    if len(spender) != 20 or len(from_acct) != 20 or len(to_acct) != 20:
-        raise Exception("address length error")
     if CheckWitness(spender) == False:
         return False
+    if len(spender) != 20 or len(from_acct) != 20 or len(to_acct) != 20:
+        raise Exception("address length error")
 
     fromKey = concat(BALANCE_PREFIX, from_acct)
     fromBalance = Get(ctx, fromKey)
@@ -242,16 +228,14 @@ def transferFrom(spender,from_acct,to_acct,amount):
         return False
     elif amount == approvedAmount:
         Delete(ctx,approveKey)
-        Delete(ctx, fromBalance - amount)
+        Put(ctx, fromKey, fromBalance - amount)
     else:
         Put(ctx,approveKey,approvedAmount - amount)
         Put(ctx, fromKey, fromBalance - amount)
 
     Put(ctx, toKey, toBalance + amount)
 
-    # Notify(["transfer", AddressToBase58(from_acct), AddressToBase58(to_acct), amount])
-    # TransferEvent(AddressToBase58(from_acct), AddressToBase58(to_acct), amount)
-    TransferEvent(from_acct, to_acct, amount)
+    Notify(['transfer',from_acct,to_acct,amount])
 
     return True
 
@@ -263,5 +247,5 @@ def allowance(owner,spender):
     :param spender:  token spender
     :return: the allowed amount of tokens
     """
-    key = concat(concat(APPROVE_PREFIX,owner),spender)
-    return Get(ctx,key)
+    allowanceKey = concat(concat(APPROVE_PREFIX,owner),spender)
+    return Get(ctx,allowanceKey)
